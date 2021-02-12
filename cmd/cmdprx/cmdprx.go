@@ -18,10 +18,9 @@ func main() {
 	secret := flag.String("secret", "", "Secret")
 	isTLS := flag.Bool("tls", false, "Use TLS")
 	host := flag.String("host", "127.0.0.1:12345", "TLS: example.com, non-TLS: 127.0.0.1:12345")
-	path := flag.String("path", "/", "URL Path")
 	flag.Parse()
 
-	if *secret == "" || *host == "" || *path == "" {
+	if *secret == "" || *host == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -29,7 +28,7 @@ func main() {
 	s := cmdproxy.NewServer(*secret)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc(*path, s.Run)
+	mux.HandleFunc(s.Path(), s.Run)
 
 	sigCh := make(chan os.Signal)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)

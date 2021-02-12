@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,24 +39,24 @@ type Result struct {
 }
 
 type Client struct {
-	Server string
 	secret []byte
+	url    string
 	client *http.Client
 }
 
 func NewClient(server, secret string) *Client {
 	client := &http.Client{}
 	c := &Client{
-		Server: server,
-		secret: getHash(secret),
+		secret: getSecretHash(secret),
+		url:    strings.TrimRight(server, "/") + "/" + getPathHash(secret),
 		client: client,
 	}
 	return c
 }
 
-func (s *Client) Run(cmd []string, timeout time.Duration) (*Result, error) {
+func (c *Client) Run(cmd []string, timeout time.Duration) (*Result, error) {
 	r := &req{
-		Secret:  s.secret,
+		Secret:  c.secret,
 		Cmd:     cmd,
 		Timeout: timeout,
 	}
@@ -63,7 +64,7 @@ func (s *Client) Run(cmd []string, timeout time.Duration) (*Result, error) {
 	if err := json.NewEncoder(&b).Encode(r); err != nil {
 		return nil, fmt.Errorf("%w (%v)", ErrClientEncode, err)
 	}
-	resp, err := s.client.Post(s.Server, "application/json", &b)
+	resp, err := c.client.Post(c.url, "application/json", &b)
 	if err != nil {
 		return nil, fmt.Errorf("%w (%v)", ErrClientPOST, err)
 	}
@@ -77,27 +78,33 @@ func (s *Client) Run(cmd []string, timeout time.Duration) (*Result, error) {
 
 type Server struct {
 	secret []byte
+	path   string
 }
 
 func NewServer(secret string) *Server {
 	s := &Server{
-		secret: getHash(secret),
+		secret: getSecretHash(secret),
+		path:   "/" + getPathHash(secret),
 	}
 	return s
+}
+
+func (s *Server) Path() string {
+	return s.path
 }
 
 func (s *Server) Run(w http.ResponseWriter, r *http.Request) {
 	var req req
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		if ServerLogging {
-			log.Printf("BadRequest Method=%v Path=%v RemoteAddr=%v UA=%v", r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
+			log.Printf("BadRequest Method=%v RemoteAddr=%v UA=%v", r.Method, r.RemoteAddr, r.UserAgent())
 		}
 		writeResult(w, http.StatusBadRequest, err, -1, nil, nil)
 		return
 	}
 	if bytes.Compare(req.Secret, s.secret) != 0 {
 		if ServerLogging {
-			log.Printf("Unauthorized Method=%v Path=%v RemoteAddr=%v UA=%v", r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
+			log.Printf("Unauthorized Method=%v RemoteAddr=%v UA=%v", r.Method, r.RemoteAddr, r.UserAgent())
 		}
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -105,7 +112,7 @@ func (s *Server) Run(w http.ResponseWriter, r *http.Request) {
 	ctx, cFn := context.WithTimeout(context.Background(), req.Timeout)
 	defer cFn()
 	if ServerLogging {
-		log.Printf("OK Method=%v Path=%v RemoteAddr=%v UA=%v", r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
+		log.Printf("OK Method=%v RemoteAddr=%v UA=%v", r.Method, r.RemoteAddr, r.UserAgent())
 		log.Printf("%s\n", strings.Join(req.Cmd, " "))
 	}
 	cmd := exec.CommandContext(ctx, req.Cmd[0], req.Cmd[1:]...)
@@ -133,8 +140,15 @@ func writeResult(w http.ResponseWriter, code int, resErr error, resCode int, res
 	json.NewEncoder(w).Encode(res)
 }
 
-func getHash(s string) []byte {
-	salt := "cmdproxyCMDPROXYcmdproxy"
+func getSecretHash(s string) []byte {
+	return getHash(s, "cmdproxyCMDPROXYcmdproxy")
+}
+
+func getPathHash(s string) string {
+	return hex.EncodeToString(getHash(s, "CMDPROXYcmdproxyCMDPROXY"))
+}
+
+func getHash(s, salt string) []byte {
 	r := sha256.Sum256([]byte(s + salt))
 	return r[:]
 }

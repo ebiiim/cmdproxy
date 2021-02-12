@@ -13,8 +13,8 @@ import (
 
 func main() {
 	secret := flag.String("secret", "", "Secret")
-	url := flag.String("url", "http://localhost:12345/", "URL")
-	cmd := flag.String("cmd", "echo helloworld", "Command")
+	url := flag.String("url", "http://127.0.0.1:12345", "URL")
+	cmd := flag.String("cmd", "echo hello world", "Command")
 	flag.Parse()
 	if *secret == "" || *url == "" || *cmd == "" {
 		flag.Usage()
