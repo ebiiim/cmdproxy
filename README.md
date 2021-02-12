@@ -35,7 +35,7 @@ Stderr:
 
 ### Security
 
-- [ ] Out-of-the-box TLS support (Let's Encrypt)
+- [x] ~~Out-of-the-box TLS support (Let's Encrypt)~~ v0.1.0
 - [ ] Client certificate authentication
 - [ ] Source IP filter
 - [ ] Request header filter
