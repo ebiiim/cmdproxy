@@ -3,6 +3,7 @@ package cmdproxy
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +25,7 @@ var (
 )
 
 type req struct {
-	Secret  string        `json:"secret"`
+	Secret  []byte        `json:"secret"`
 	Cmd     []string      `json:"cmd"`
 	Timeout time.Duration `json:"timeout"`
 }
@@ -38,7 +39,7 @@ type Result struct {
 
 type Client struct {
 	Server string
-	secret string
+	secret []byte
 	client *http.Client
 }
 
@@ -46,7 +47,7 @@ func NewClient(server, secret string) *Client {
 	client := &http.Client{}
 	c := &Client{
 		Server: server,
-		secret: secret,
+		secret: getHash(secret),
 		client: client,
 	}
 	return c
@@ -75,12 +76,12 @@ func (s *Client) Run(cmd []string, timeout time.Duration) (*Result, error) {
 }
 
 type Server struct {
-	secret string
+	secret []byte
 }
 
 func NewServer(secret string) *Server {
 	s := &Server{
-		secret: secret,
+		secret: getHash(secret),
 	}
 	return s
 }
@@ -94,7 +95,7 @@ func (s *Server) Run(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, http.StatusBadRequest, err, -1, nil, nil)
 		return
 	}
-	if req.Secret != s.secret {
+	if bytes.Compare(req.Secret, s.secret) != 0 {
 		if ServerLogging {
 			log.Printf("Unauthorized Method=%v Path=%v RemoteAddr=%v UA=%v", r.Method, r.URL.Path, r.RemoteAddr, r.UserAgent())
 		}
@@ -130,4 +131,10 @@ func writeResult(w http.ResponseWriter, code int, resErr error, resCode int, res
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(res)
+}
+
+func getHash(s string) []byte {
+	salt := "cmdproxyCMDPROXYcmdproxy"
+	r := sha256.Sum256([]byte(s + salt))
+	return r[:]
 }
